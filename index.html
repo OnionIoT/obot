@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+ <html>
+    <head>
+        <meta charset="utf-8" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta name="description" content="Home page for Onion Corporation" />
+        <meta name="author" content="Onion Corporation" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+        <title>Oliver Controller</title>
+        <style>
+            html, body {
+                height: 100%;
+                width: 100%;
+                margin: 0;
+                padding: 0;
+                overflow: hidden;
+            }
+
+            * {
+                -webkit-box-sizing: border-box;
+                -moz-box-sizing: border-box;
+                box-sizing: border-box;
+                font-family: sans-serif;
+                -webkit-touch-callout: none;
+                -webkit-user-select: none;
+                -khtml-user-select: none;
+                -moz-user-select: none;
+                -ms-user-select: none;
+                user-select: none;
+            }
+
+            #control {
+                height: 100%;
+            }
+
+            #timer {
+                position: absolute;
+                bottom: 0;
+                width: 100%;
+                background: #ff0;
+            }
+
+            #pinch {
+                font-weight: bold;
+                background-color: #ccdfff;
+                margin: 25px;
+                padding: 25px;
+                border-radius: 5px;
+                text-align: center;
+            }
+
+            h1, h2, h3, h4, h5, h6 {
+                font-weight: 400;
+            }
+
+            .text-center {
+            	text-align: center;
+            }
+
+            .instruction {
+            	text-align: center;
+            	color: #00c;
+            }
+        </style>
+    </head>
+    <body>
+        <h2 class="text-center">Oliver the RoboArm</h2>
+
+        <div class="wrapper">
+            <div class="padding-container-15 onion-content">
+                <div id="control">
+                    <p class="instruction">Move your phone to move the Obot. Touch the screen to Pinch.</p>
+
+                    <h2 class="text-center">
+                        X = <span id="x"></span>
+                    </h2>
+                    <h2 class="text-center">
+                        Y = <span id="y"></span>
+                    </h2>
+                    <h2 class="text-center">
+                        Z = <span id="z"></span>
+                    </h2>
+
+                    <h1 id="pinch" class="text-center hidden">Pinch!</h1>
+                </div>
+            </div>
+        </div>
+
+        <script src="/jquery.js"></script>
+
+	<script>
+            $(function () {
+                var interval = 50;
+                var initialized = false;
+                $('#pinch').hide();
+
+                var acceleration = { x: 0, y: 0, z: 0 };
+                var lastAcceleration = { x: 0, y: 0, z: 0 };
+
+                setInterval(function () {
+                    // do something only if there's a change in acceleration/movement
+                    if (acceleration.x !== lastAcceleration.x ||
+                        acceleration.y !== lastAcceleration.y ||
+                        acceleration.z !== lastAcceleration.z) {
+
+                        lastAcceleration.x = acceleration.x;
+                        lastAcceleration.y = acceleration.y;
+                        lastAcceleration.z = acceleration.z;
+
+                        $.post('/pos', lastAcceleration);
+                        // Send the command
+                        //controlSocket.emit('cmd', {
+                        //    device_id: '7J1xd9Mc',
+                        //    function_id: 'move',
+                        //    params: lastOrientation
+                        //});
+                    }
+                }, interval);
+
+                $('body').on('touchstart', function(e){
+                    $('#pinch').show();
+                    $.get('/pinch');
+                });
+
+                $('body').on('touchend', function(e){
+                    $('#pinch').hide();
+                    $.get('/release');
+                });
+
+                window.addEventListener('devicemotion', function (eventData) {
+                    if (!initialized) {
+                        // no need for initialization code right now
+                        initialized = true;
+                        return;
+                    }
+
+                    acceleration.x = parseFloat(eventData.acceleration.x); // m/s^2
+                    acceleration.y = parseFloat(eventData.acceleration.y);
+                    acceleration.z = parseFloat(eventData.acceleration.z);
+
+
+                    $('#z').html(acceleration.z);
+                    $('#y').html(acceleration.y);
+                    $('#x').html(acceleration.x);
+                }, false);
+            });
+        </script>
+    </body>
+</html>
