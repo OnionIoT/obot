@@ -2,8 +2,7 @@
 import serial
 import warnings
 import time
-
-
+from time import sleep
 
 class Arm:
     def __init__(self, port_name, baud_rate):
@@ -12,7 +11,7 @@ class Arm:
         except x:
             warnings.warn("can't open the serial port to control the robot arm");
             raise x;
-        time.sleep(2) # wait a few seconds for the robot to boot
+        sleep(2) # wait a few seconds for the robot to boot
 
         # load flags and constants
         self.flag = self.Flag()
@@ -21,12 +20,22 @@ class Arm:
         self.ARM_MIN_REACH = 153.72 # mm. limit is actually a bit larger depending on Z height
 
         # default arm speeds and settings
+        print "Setting force status 0."
+        self.setForceStatus(0)
+        print "Force status is now 0."
+        sleep(1)
+
+        print "Setting force status 1."
         self.setForceStatus(1)
-        time.sleep(1)
+        print "Force status is now 1."
+        sleep(1)
+
         speeds = [50, 50, 50, 200, 200, 200, 200]
         fluentEnables = [True, True, True, True, True, True, True]
+        print "Setting speeds and fluent motion."
         self.setSpeed(fluentEnables, speeds)
-        time.sleep(2)
+        print "Speeds and fluent motion have been set."
+        sleep(2)
 
     def __del__(self):
         self.port.close()
@@ -48,18 +57,40 @@ class Arm:
 
     # write commands to the robot's serial port
     def robotWriteSerial(self,data):
-        #print 'Writing: 0x%02x'%(data),
+        print 'Sending: 0x%02x,'%(data),
+        start_time = time.time() # begin timing the serial command
         ret = self.port.write(chr(data))
         self.port.flush()
+        end_time = time.time() # stop the clock
+        elapsed_time = end_time - start_time
+        print '%d seconds' %(elapsed_time)
         #print ', wrote %d bytes'%(ret)
+        self.port.read() # try and clear the robot's output serial buffer
         #print "Reading input: ", self.port.read()
+        sleep(0.001)
+        return ret
+
+    def robotWriteSerialString(self,data):
+        print 'Sending bytestring:'
+        for element in data:
+            print element
+        start_time = time.time() # begin timing the serial command
+        ret = self.port.write(data)
+        self.port.flush()
+        end_time = time.time() # stop the clock
+        elapsed_time = end_time - start_time
+        print '%d seconds' %(elapsed_time)
+        #print ', wrote %d bytes'%(ret)
+        self.port.read() # try and clear the robot's output serial buffer
+        #print "Reading input: ", self.port.read()
+        sleep(0.001)
         return ret
 
     def setForceStatus(self,status):
         "set motor force status: 0-forceless, 1-normal servo, 2-protection"
-        read = self.robotWriteSerial(self.flag.begin)
-        read = self.robotWriteSerial(self.flag.status)
-        read = self.robotWriteSerial(status & self.flag.mask)
+        self.robotWriteSerial(self.flag.begin)
+        self.robotWriteSerial(self.flag.status)
+        self.robotWriteSerial(status & self.flag.mask)
 
     # set motor speeds
     def setSpeed(self, fluentEnables, speeds):
@@ -86,10 +117,8 @@ class Arm:
 
         # then send the data over
         # send the command bytes
-        read = self.robotWriteSerial(self.flag.begin)
-        print (read)
-        read = self.robotWriteSerial(self.flag.angle)
-        print (read)
+        self.robotWriteSerial(self.flag.begin)
+        self.robotWriteSerial(self.flag.angle)
 
         # send angles
         # 10 bits of precision, the angle needs to be broken up between bytes
@@ -142,9 +171,16 @@ class Arm:
         sendData.append(int(end_effector_signal * 50 / 9))
 
         # now send the data to the robot
-
         self.robotWriteSerial(self.flag.begin)
         self.robotWriteSerial(self.flag.IK6)
         for data in sendData:
             self.robotWriteSerial((data / 128) & self.flag.mask)
             self.robotWriteSerial(data & self.flag.mask)
+
+
+        # commandString = []; # build a byte
+        # for data in sendData:
+        #     commandString.append((data / 128) & self.flag.mask)
+        #     commandString.append(data & self.flag.mask)
+        # commandString = bytes(commandString) # convert to a bytestring
+        # self.robotWriteSerialString(commandString) # send the list of commands straight to the printer
