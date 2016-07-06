@@ -38,6 +38,7 @@ class Arm:
         sleep(2)
 
     def __del__(self):
+        print "Closing serial port."
         self.port.close()
 
     class Flag: # command bytes to be written
@@ -57,34 +58,22 @@ class Arm:
 
     # write commands to the robot's serial port
     def robotWriteSerial(self,data):
-        print 'Sending: 0x%02x,'%(data),
-        start_time = time.time() # begin timing the serial command
+        # print 'Sending: 0x%02x,'%(data),
         ret = self.port.write(chr(data))
-        self.port.flush()
-        end_time = time.time() # stop the clock
-        elapsed_time = end_time - start_time
-        print '%d seconds' %(elapsed_time)
-        #print ', wrote %d bytes'%(ret)
-        self.port.read() # try and clear the robot's output serial buffer
-        #print "Reading input: ", self.port.read()
         sleep(0.001)
+        self.port.reset_input_buffer() # needed so the PC doesn't hang while trying to send new bytes
         return ret
 
-    def robotWriteSerialString(self,data):
-        print 'Sending bytestring:'
-        for element in data:
-            print element
-        start_time = time.time() # begin timing the serial command
-        ret = self.port.write(data)
-        self.port.flush()
-        end_time = time.time() # stop the clock
-        elapsed_time = end_time - start_time
-        print '%d seconds' %(elapsed_time)
-        #print ', wrote %d bytes'%(ret)
-        self.port.read() # try and clear the robot's output serial buffer
-        #print "Reading input: ", self.port.read()
-        sleep(0.001)
+    # alternative serial writing - write a whole array using a buffer
+    def robotWriteSerialArray(self, dataArray):
+        chrBuffer = [ chr(x) for x in dataArray]
+        # convert to a bytestring
+        print "Sending buffer of %d bytes"%(len(chrBuffer))
+        ret = self.port.write(chrBuffer)
+        self.port.reset_input_buffer()
+        print 'wrote %d'%ret
         return ret
+
 
     def setForceStatus(self,status):
         "set motor force status: 0-forceless, 1-normal servo, 2-protection"
@@ -171,16 +160,9 @@ class Arm:
         sendData.append(int(end_effector_signal * 50 / 9))
 
         # now send the data to the robot
+        print 'Sending IK command: %d vector datapoints'%(len(sendData))
         self.robotWriteSerial(self.flag.begin)
         self.robotWriteSerial(self.flag.IK6)
         for data in sendData:
             self.robotWriteSerial((data / 128) & self.flag.mask)
             self.robotWriteSerial(data & self.flag.mask)
-
-
-        # commandString = []; # build a byte
-        # for data in sendData:
-        #     commandString.append((data / 128) & self.flag.mask)
-        #     commandString.append(data & self.flag.mask)
-        # commandString = bytes(commandString) # convert to a bytestring
-        # self.robotWriteSerialString(commandString) # send the list of commands straight to the printer
