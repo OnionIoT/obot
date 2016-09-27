@@ -4,7 +4,7 @@
 from arm import Arm # 7bot module
 from time import sleep
 import SocketServer
-# from OmegaArmHandler import OmegaArmHandler # creates an Arm instance in the handler script
+from OmegaArmHandler import OmegaArmHandler # creates an Arm instance in the handler script
 
 # some constants for testing
 reference_position = [-75, 150, 300]

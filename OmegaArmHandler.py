@@ -14,11 +14,36 @@ import SocketServer
 X_ACCEL_TO_DISPLACEMENT = 1
 Y_ACCEL_TO_DISPLACEMENT = 1
 Z_ACCEL_TO_DISPLACEMENT = 1
+X_ACCEL_TO_VELOCITY = 5 # m/s^2 to some rough velocity command. assume they're facing the front of the robot
+Y_ACCEL_TO_VELOCITY = -5 # assume they're facing the front of the robot
+Z_ACCEL_TO_VELOCITY = 5
+x_max = 300 # mm
+x_min = -300
+y_max = 300
+y_min = 140
+z_max = 350
+z_min = 0
+accel_min = 1
 reference_position = [0, 160, 200]
 reference_vec56 = [0, 1, 0]
 reference_vec67 = [1, 0, 0]
 reference_end_effector = 90 # open servo gripper
 upright=[0, 160, 200] # some upright position
+
+# global variable to track the robot's motion commands and actuator states
+armCommand = {
+    'end_joint': reference_position,
+    'velocity_x': 0,
+    'velocity_y': 0,
+    'velocity_z': 0,
+    'vec_56': reference_vec56,
+    'vec_67': reference_vec67,
+    'theta3': 90,
+    'theta4':90,
+    'theta5':90,
+    'end_effector': reference_end_effector # default closed servo gripper
+
+    }
 
 # create a robot arm for use by the handler
 robotArm = Arm('/dev/ttyACM0', 115200)
@@ -32,29 +57,76 @@ class OmegaArmHandler(SimpleHTTPRequestHandler):
         # move the robot to the reference position
         robotArm.inverseKinematics6(reference_position, reference_vec56, reference_vec67, reference_end_effector)
 
-        self.current_position = reference_position
-
     # move function
-    # takes a point
+    # takes accel values
     def move_accel(self, accel_x, accel_y, accel_z):
+        # use accelerations to approximate changes in velocity, and then adjust the arm's coordinates accordingly
+        # impose thresholds on the raw data
+        accel_x = float(accel_x * 1) # workaround to convert unicode string to number
+        accel_y = float(accel_y * 1)
+        accel_z = float(accel_z * 1)
 
+        print "accel_x:", accel_x
+        print "accel_y:", accel_y
+        print "accel_z:", accel_z
 
-        # convert to displacements
-        displacement_x = float(accel_x * X_ACCEL_TO_DISPLACEMENT)
-        displacement_y = float(accel_y * Y_ACCEL_TO_DISPLACEMENT)
-        displacement_z = float(accel_z * Z_ACCEL_TO_DISPLACEMENT)
-        print displacement_x, displacement_y, displacement_z
-        # calculate the next position
-        next_position = []
-        next_position.append(self.current_position[0] + displacement_x)
-        next_position.append(self.current_position[1] + displacement_y)
-        next_position.append(self.current_position[2] + displacement_z)
+        deltaV_x = 0
+        deltaV_y = 0
+        deltaV_z = 0
+
+        if (abs(accel_x) > accel_min):
+            deltaV_x = float(accel_x * X_ACCEL_TO_DISPLACEMENT)
+
+        if (abs(accel_y) > accel_min):
+            deltaV_y = float(accel_y * Y_ACCEL_TO_DISPLACEMENT)
+
+        if (abs(accel_z) > accel_min):
+            deltaV_z = float(accel_z * Z_ACCEL_TO_DISPLACEMENT)
+
+        armCommand['velocity_x'] += round(deltaV_x)
+        armCommand['velocity_y'] += round(deltaV_y)
+        armCommand['velocity_z'] += round(deltaV_z)
+
+        # integrate the velocity to get change in displacement
+        armCommand['end_joint'][0] += armCommand['velocity_x']
+        armCommand['end_joint'][1] += armCommand['velocity_y']
+        armCommand['end_joint'][2] += armCommand['velocity_z']
+
+        # constrain the end_joint value to the bounds
+        armCommand['end_joint'][0] = max(min(armCommand['end_joint'][0], x_max), x_min)
+        armCommand['end_joint'][1] = max(min(armCommand['end_joint'][1], y_max), y_min)
+        armCommand['end_joint'][2] = max(min(armCommand['end_joint'][2], z_max), z_min)
+
+        # # convert to displacements
+
+        # print displacement_x, displacement_y, displacement_z        # # calculate the next position
+        # next_position = []
+        # next_position.append(self.current_position[0] + displacement_x)
+        # next_position.append(self.current_position[1] + displacement_y)
+        # next_position.append(self.current_position[2] + displacement_z)
 
         # move the arm to the next position
-        robotArm.inverseKinematics6(next_position, reference_vec56, reference_vec67, reference_end_effector)
-        # update the current position
-        self.current_position = next_position
-        sleep(0.001)
+        print "----------------------------"
+        print "x:", armCommand['end_joint'][0]
+        print "y:", armCommand['end_joint'][1]
+        print "z:", armCommand['end_joint'][2]
+
+        # robotArm.inverseKinematics6(
+        #     armCommand['end_joint'],
+        #     armCommand['vec_56'],
+        #     armCommand['vec_67'],
+        #     armCommand['end_effector'])
+
+        # use IK3 instead here
+        robotArm.inverseKinematics3(
+            armCommand['end_joint'],
+            armCommand['theta3'],
+            armCommand['theta4'],
+            armCommand['theta5'],
+            armCommand['end_effector'])
+
+        # robotArm.inverseKinematics6(next_position, reference_vec56, reference_vec67, reference_end_effector)
+
 
 
     def pinch(self):

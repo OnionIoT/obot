@@ -68,7 +68,7 @@ class Arm:
     def robotWriteSerialArray(self, dataArray):
         chrBuffer = [ chr(x) for x in dataArray]
         # convert to a bytestring
-        print "Sending buffer of %d bytes"%(len(chrBuffer))
+        # print "Sending buffer of %d bytes"%(len(chrBuffer))
         ret = self.port.write(chrBuffer)
         self.port.reset_input_buffer()
         print 'wrote %d'%ret
@@ -160,9 +160,44 @@ class Arm:
         sendData.append(int(end_effector_signal * 50 / 9))
 
         # now send the data to the robot
-        print 'Sending IK command: %d vector datapoints'%(len(sendData))
+        # print 'Sending IK command: %d vector datapoints'%(len(sendData))
         self.robotWriteSerial(self.flag.begin)
         self.robotWriteSerial(self.flag.IK6)
+        for data in sendData:
+            self.robotWriteSerial((data / 128) & self.flag.mask)
+            self.robotWriteSerial(data & self.flag.mask)
+
+    def inverseKinematics3(self, joint5, theta3, theta4, theta5, end_effector_signal):
+        # TODO: add convergence
+
+        # process data
+        # constrain the joint vector to the bounds given in the processing example
+        joint5_constrained = [ self.clip(joint5[0], -500, 500), self.clip(joint5[1], -500, 500), self.clip(joint5[2], -500, 500) ]
+        sendData = [] # prepare the commands to send
+
+        # prepare joint 5 vector data
+        sendData.append(int(abs(joint5_constrained[0])))
+        if joint5_constrained[0] < 0:
+            sendData[0] += 1024
+        sendData.append(int(abs(joint5_constrained[1])))
+        if joint5_constrained[1] < 0:
+            sendData[-1] += 1024
+        sendData.append(int(abs(joint5_constrained[2])))
+        if joint5_constrained[2] < 0:
+            sendData[-1] += 1024
+
+        # prepare forearm, wrist, and wrist twist angles
+        sendData.append(int(theta3*50/9))
+        sendData.append(int(theta4*50/9))
+        sendData.append(int(theta5*50/9))
+
+        # prepare end effector signal data
+        sendData.append(int(end_effector_signal * 50 / 9))
+
+        # now send the data to the robot
+        # print 'Sending IK command: %d vector datapoints'%(len(sendData))
+        self.robotWriteSerial(self.flag.begin)
+        self.robotWriteSerial(self.flag.IK3)
         for data in sendData:
             self.robotWriteSerial((data / 128) & self.flag.mask)
             self.robotWriteSerial(data & self.flag.mask)
