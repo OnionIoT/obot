@@ -6,12 +6,6 @@
         <meta name="description" content="Home page for Onion Corporation" />
         <meta name="author" content="Onion Corporation" />
         <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-        <-- turn off caching -->
-        <meta http-equiv="cache-control" content="max-age=0" />
-        <meta http-equiv="cache-control" content="no-cache" />
-        <meta http-equiv="expires" content="0" />
-        <meta http-equiv="expires" content="Tue, 01 Jan 1980 1:00:00 GMT" />
-        <meta http-equiv="pragma" content="no-cache" />
         <title>Oliver Controller</title>
         <style>
             html, body {
@@ -21,7 +15,7 @@
                 padding: 0;
                 overflow: hidden;
             }
-
+        
             * {
                 -webkit-box-sizing: border-box;
                 -moz-box-sizing: border-box;
@@ -34,7 +28,7 @@
                 -ms-user-select: none;
                 user-select: none;
             }
-
+            
             #control {
                 height: 100%;
             }
@@ -54,15 +48,22 @@
                 border-radius: 5px;
                 text-align: center;
             }
-
+            #release {
+                font-weight: bold;
+                background-color: #175488;
+                margin: 25px;
+                padding: 25px;
+                border-radius: 5px;
+                text-align: center;
+            }
             h1, h2, h3, h4, h5, h6 {
                 font-weight: 400;
             }
-
+            
             .text-center {
             	text-align: center;
             }
-
+            
             .instruction {
             	text-align: center;
             	color: #00c;
@@ -75,7 +76,7 @@
         <div class="wrapper">
             <div class="padding-container-15 onion-content">
                 <div id="control">
-                    <p class="instruction">Move your phone to move the Obot. Touch the screen to Pinch.</p>
+                    <p class="instruction">Rotate & Tilt to move Oliver. Touch the screen to Grab.</p>
 
                     <h2 class="text-center">
                         X = <span id="x"></span>
@@ -87,85 +88,79 @@
                         Z = <span id="z"></span>
                     </h2>
 
-                    <h1 id="pinch" class="text-center hidden">Pinch!</h1>
+                    <h1 id="pinch" class="text-center">Grab</h1>
+					<h1 id="release" class="text-center">Grabbing!</h1>
                 </div>
             </div>
         </div>
 
         <script src="/jquery.js"></script>
-
-        <script>
+        
+	<script>
             $(function () {
-                var interval = 50;
+                var interval = 150;
                 var initialized = false;
-                $('#pinch').hide();
+                var xHome = 0;
+                $('#release').hide();
 
-                var acceleration = { x: 0, y: 0, z: 0 };
-                var rawAcceleration = { x: 0, y: 0, z: 0 };
-                var lastAcceleration = { x: 0, y: 0, z: 0 };
+                var orientation = { x: 0, y: 0, z: 0 };
+                var lastOrientation = { x: 0, y: 0, z: 0 };
 
                 setInterval(function () {
-                    // do something only if there's a change in acceleration/movement
-                    if (acceleration.x !== lastAcceleration.x ||
-                        acceleration.y !== lastAcceleration.y ||
-                        acceleration.z !== lastAcceleration.z) {
+                    if (orientation.x !== lastOrientation.x || 
+                       orientation.y !== lastOrientation.y ||
+                       orientation.z !== lastOrientation.z) {
 
-                        lastAcceleration.x = acceleration.x;
-                        lastAcceleration.y = acceleration.y;
-                        lastAcceleration.z = acceleration.z;
+                        lastOrientation.x = orientation.x;
+                        lastOrientation.y = orientation.y;
+                        lastOrientation.z = orientation.z;
 
-                        $.post('/pos', lastAcceleration);
-                        // Send the command
-                        //controlSocket.emit('cmd', {
-                        //    device_id: '7J1xd9Mc',
-                        //    function_id: 'move',
-                        //    params: lastOrientation
-                        //});
+                        $.post('/pos', lastOrientation);
+                        
                     }
                 }, interval);
 
                 $('body').on('touchstart', function(e){
-                    $('#pinch').show();
+					$('#pinch').hide();
+                    $('#release').show();
                     $.get('/pinch');
                 });
 
                 $('body').on('touchend', function(e){
-                    $('#pinch').hide();
+                    $('#release').hide();
+					$('#pinch').show();
                     $.get('/release');
                 });
 
-                window.addEventListener('devicemotion', function (eventData) {
+                window.addEventListener('deviceorientation', function (eventData) {
                     if (!initialized) {
-                        // no need for initialization code right now
+                        xHome = Math.floor(eventData.alpha) - 90; // minus 90 to adjust the center to be 90 deg
                         initialized = true;
                         return;
                     }
 
-                    acceleration.x = 0;
-                    acceleration.y = 0;
-                    acceleration.z = 0;
+                    // alpha is the compass direction the device is facing in degrees
+                    var x = Math.floor(eventData.alpha) - xHome; // Find x in reference to xHome
+                    x = (x < 0) ? x + 360 : x; // Normalize x
+                    if (x > 180) x = x - 180; // Adjust if x is in II quadrant
+                    // Adjust if x is in III quadrant
+                    x = 180 - x; // Revert the direction of change (i.e. ging left is smaller)
+                    orientation.x = x;
 
-                    rawAcceleration.x = parseFloat(eventData.acceleration.x); // m/s^2
-                    rawAcceleration.y = parseFloat(eventData.acceleration.y);
-                    rawAcceleration.z = parseFloat(eventData.acceleration.z);
+                    // beta is the front-to-back tilt in degrees, where front is positive
+                    var y = Math.floor(eventData.beta) + 90;
+                    y = (y < 0) ? y + 360 : y; // Normalize x
+                    if (y > 180 && y < 270) y = 180; // Adjust if x is in II quadrant
+                    else if (y > 270) y = 0; // Adjust if x is in III quadrant
+                    orientation.y = y;
 
-                    var minimumAcceleration = 0.5; // m/s^2, there may be some drift (eg. my Nexus 6P)
-                    if (Math.abs(rawAcceleration.x) > minimumAcceleration) {
-                        acceleration.x = rawAcceleration.x;
-                    }
+                    // gamma is the left-to-right tilt in degrees, where right is positive
+                    var z =  Math.floor(eventData.gamma) + 90;
+                    orientation.z = z;
 
-                    if (Math.abs(rawAcceleration.y) > minimumAcceleration) {
-                        acceleration.y = rawAcceleration.y;
-                    }
-
-                    if (Math.abs(rawAcceleration.z) > minimumAcceleration) {
-                        acceleration.z = rawAcceleration.z;
-                    }
-
-
-                    $('#z').html(acceleration.z);
-                    $('#y').html(acceleration.y);
-                    $('#x').html(acceleration.x);
+                    $('#z').html(orientation.z);
+                    $('#y').html(orientation.y);
+                    $('#x').html(orientation.x);
                 }, false);
             });
         </script>

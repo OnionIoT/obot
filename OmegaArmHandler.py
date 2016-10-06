@@ -31,155 +31,89 @@ reference_end_effector = 90 # open servo gripper
 upright=[0, 160, 200] # some upright position
 
 # global variable to track the robot's motion commands and actuator states
-armCommand = {
-    'end_joint': reference_position,
-    'velocity_x': 0,
-    'velocity_y': 0,
-    'velocity_z': 0,
-    'vec_56': reference_vec56,
-    'vec_67': reference_vec67,
-    'theta3': 90,
-    'theta4':90,
-    'theta5':90,
-    'end_effector': reference_end_effector # default closed servo gripper
-
-    }
 
 # create a robot arm for use by the handler
 robotArm = Arm('/dev/ttyACM0', 115200)
-
+servoAngles = [90, 115, 65, 90, 90, 90, 90]
 # pass the handler an instance of the robot arm controller to work with
 # the robotArm's initialization can be done beforehand
 class OmegaArmHandler(SimpleHTTPRequestHandler):
-    current_position = reference_position
-    def __init__(self, request, client_address, server):
-        SimpleHTTPRequestHandler.__init__(self, request, client_address, server)
-        # move the robot to the reference position
-        robotArm.inverseKinematics6(reference_position, reference_vec56, reference_vec67, reference_end_effector)
 
-    # move function
-    # takes accel values
-    def move_accel(self, accel_x, accel_y, accel_z):
-        # use accelerations to approximate changes in velocity, and then adjust the arm's coordinates accordingly
-        # impose thresholds on the raw data
-        accel_x = float(accel_x * 1) # workaround to convert unicode string to number
-        accel_y = float(accel_y * 1)
-        accel_z = float(accel_z * 1)
+	def __init__(self, request, client_address, server):
+		SimpleHTTPRequestHandler.__init__(self, request, client_address, server)
+		# move the robot to the reference position
+		robotArm.setServoAngles(servoAngles)
 
-        print "accel_x:", accel_x
-        print "accel_y:", accel_y
-        print "accel_z:", accel_z
+	# move function
+	# takes gyro values
+	def set_angle(self, angle_x, angle_y, angle_z):
+		angle_x = float(angle_x * 1) # workaround to convert unicode string to number
+		angle_y = float(angle_y * 1)
+		angle_z = float(angle_z * 1)
+		if angle_x < 0:
+			angle_x = 180 + angle_x
+		servoAngles[0] = 180 - angle_x
+		if angle_y  > 70:
+			servoAngles[1] = 115
+			servoAngles[2] = (180 - angle_y)
+		else:	
+			servoAngles[1] = (angle_y - 20)
+		servoAngles[3] = 180 - angle_z
+		robotArm.setServoAngles(servoAngles)
+		
 
-        deltaV_x = 0
-        deltaV_y = 0
-        deltaV_z = 0
+	def pinch(self):
+		servoAngles[6] = 0
+		robotArm.setServoAngles(servoAngles)
+		print "Pinch!"
+		pass
 
-        if (abs(accel_x) > accel_min):
-            deltaV_x = float(accel_x * X_ACCEL_TO_DISPLACEMENT)
+	def release(self):
+		servoAngles[6] = 90
+		robotArm.setServoAngles(servoAngles)
+		print "Release!"
+		pass
 
-        if (abs(accel_y) > accel_min):
-            deltaV_y = float(accel_y * Y_ACCEL_TO_DISPLACEMENT)
+	def end_headers (self):
+		self.send_header('Access-Control-Allow-Origin', '*')
+		SimpleHTTPRequestHandler.end_headers(self)
 
-        if (abs(accel_z) > accel_min):
-            deltaV_z = float(accel_z * Z_ACCEL_TO_DISPLACEMENT)
+	def do_POST(self):
+		length = int(self.headers['Content-Length'])
+		post_data = parse_qs(self.rfile.read(length).decode('utf-8'))
+		post_items = {}
+		# get the acceleration values
+		for key, value in post_data.iteritems():
+			post_items[key] = value[0]
+		self.set_angle(post_items['x'], post_items['y'], post_items['z'])
 
-        armCommand['velocity_x'] += round(deltaV_x)
-        armCommand['velocity_y'] += round(deltaV_y)
-        armCommand['velocity_z'] += round(deltaV_z)
+	def do_GET(self):
+		if self.path == '/':
+			f = open('index.html')
+			self.send_response(200)
+			self.send_header('Content-type', 'text/html')
+			self.end_headers()
+			self.wfile.write(f.read())
+			f.close()
+			return
 
-        # integrate the velocity to get change in displacement
-        armCommand['end_joint'][0] += armCommand['velocity_x']
-        armCommand['end_joint'][1] += armCommand['velocity_y']
-        armCommand['end_joint'][2] += armCommand['velocity_z']
+		elif self.path.endswith('.js'):
+			f = open('jquery.js')
+			self.send_response(200)
+			self.send_header('Content-type', 'application/javascript')
+			self.end_headers()
+			self.wfile.write(f.read())
+			f.close()
+			return
 
-        # constrain the end_joint value to the bounds
-        armCommand['end_joint'][0] = max(min(armCommand['end_joint'][0], x_max), x_min)
-        armCommand['end_joint'][1] = max(min(armCommand['end_joint'][1], y_max), y_min)
-        armCommand['end_joint'][2] = max(min(armCommand['end_joint'][2], z_max), z_min)
+		elif self.path[0:6] == '/pinch':
+			self.pinch()
 
-        # # convert to displacements
+		elif self.path[0:8] == '/release':
+			self.release()
 
-        # print displacement_x, displacement_y, displacement_z        # # calculate the next position
-        # next_position = []
-        # next_position.append(self.current_position[0] + displacement_x)
-        # next_position.append(self.current_position[1] + displacement_y)
-        # next_position.append(self.current_position[2] + displacement_z)
+		self.send_response(200)
+		self.end_headers()
 
-        # move the arm to the next position
-        print "----------------------------"
-        print "x:", armCommand['end_joint'][0]
-        print "y:", armCommand['end_joint'][1]
-        print "z:", armCommand['end_joint'][2]
-
-        # robotArm.inverseKinematics6(
-        #     armCommand['end_joint'],
-        #     armCommand['vec_56'],
-        #     armCommand['vec_67'],
-        #     armCommand['end_effector'])
-
-        # use IK3 instead here
-        robotArm.inverseKinematics3(
-            armCommand['end_joint'],
-            armCommand['theta3'],
-            armCommand['theta4'],
-            armCommand['theta5'],
-            armCommand['end_effector'])
-
-        # robotArm.inverseKinematics6(next_position, reference_vec56, reference_vec67, reference_end_effector)
-
-
-
-    def pinch(self):
-        # SERVO.set_angle(5, 30)
-        print "Pinch!"
-        pass
-
-    def release(self):
-        # SERVO.set_angle(5, 100)
-        print "Release!"
-        pass
-
-    def end_headers (self):
-        self.send_header('Access-Control-Allow-Origin', '*')
-        SimpleHTTPRequestHandler.end_headers(self)
-
-    def do_POST(self):
-        length = int(self.headers['Content-Length'])
-        post_data = parse_qs(self.rfile.read(length).decode('utf-8'))
-        post_items = {}
-        # get the acceleration values
-        for key, value in post_data.iteritems():
-            post_items[key] = value[0]
-
-        self.move_accel(post_items['x'], post_items['y'], post_items['z'])
-
-    def do_GET(self):
-        if self.path == '/':
-            f = open('/home/gbo/proj/onion/7bot-demo/index.html')
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            self.wfile.write(f.read())
-            f.close()
-            return
-
-        elif self.path.endswith('.js'):
-            f = open('/home/gbo/proj/onion/7bot-demo' + self.path)
-            self.send_response(200)
-            self.send_header('Content-type', 'application/javascript')
-            self.end_headers()
-            self.wfile.write(f.read())
-            f.close()
-            return
-
-        elif self.path[0:6] == '/pinch':
-            self.pinch()
-
-        elif self.path[0:8] == '/release':
-            self.release()
-
-        self.send_response(200)
-        self.end_headers()
-
-    def log_message(self, format, *args):
-        return
+	def log_message(self, format, *args):
+		return

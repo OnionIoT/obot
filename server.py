@@ -16,10 +16,15 @@ upright=[0, 160, 200] # some upright position
 # main function
 # most of the stuff is done in the individual files
 if __name__ == '__main__':
-    print "Obot start"
-    print "This will take your phone's accelerometer data and turn it into robot motion!"
-    PORT = 8080
-    server = SocketServer.TCPServer(('', PORT), OmegaArmHandler)
+	print "Obot start"
+	print "This will take your phone's accelerometer data and turn it into robot motion!"
+	PORT = 8080
+	server = SocketServer.TCPServer(('', PORT), OmegaArmHandler)
 
-    print "Serving at port", PORT, "."
-    server.serve_forever()
+	print "Serving at port", PORT, "."
+	try:
+		server.serve_forever()
+	except KeyboardInterrupt:
+		pass
+	server.server_close()
+	print "HTTP server is closed"
