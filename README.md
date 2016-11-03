@@ -7,3 +7,13 @@ Originally written for an Onion demo at the Hamilton Maker Faire.
 ## Todo
 * Add convergence checking (check if the robot has reached the commanded position before moving on)
 * Add handlers for gyroscope data
+
+## Installation
+
+```
+opkg update
+```
+
+```
+opkg install python python-pyserial
+```
